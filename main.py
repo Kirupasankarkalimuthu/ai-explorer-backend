@@ -74,18 +74,20 @@ async def execute_steps(payload: dict):
        browser = await p.chromium.launch(headless=True)
        page = await browser.new_page()
        await page.goto(url)
+       await page.wait_for_load_state("networkidle")
        for step in steps:
-           action = step.get("action")
-           selector = step.get("selector")
-           value = step.get("value", "")
-           try:
-               if action == "click":
-                   await page.click(selector)
-               elif action == "type":
-                   await page.fill(selector, value)
-               execution_log.append(f"Executed: {action} on {selector}")
-           except Exception as e:
-               execution_log.append(f"Failed: {action} on {selector} - {str(e)}")
+         action = step.get("action")
+         selector = step.get("selector")
+         value = step.get("value", "")
+         try:
+            if action == "click":
+               await page.click(selector, timeout=3000)
+            elif action == "type":
+               await page.fill(selector, value, timeout=3000)
+            execution_log.append(f"Executed: {action} on {selector}")
+         except Exception as e:
+            execution_log.append(f"Failed: {action} on {selector} - {str(e)}")
+       await page.screenshot(path="final_state.png")
        await browser.close()
    return {
        "status": "Execution completed",
