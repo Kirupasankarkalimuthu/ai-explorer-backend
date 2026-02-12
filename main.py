@@ -46,16 +46,19 @@ DOM:
        ],
        temperature=0
    )
-   raw_output = response.choices[0].message.content
+   raw_output = response.choices[0].message.content.strip()
+# Remove markdown formatting if present
+   if raw_output.startswith("```"):
+      raw_output = raw_output.split("```")[1]
    import json
    try:
-       structured_output = json.loads(raw_output)
-   except Exception as e:
-       structured_output = {
-           "summary": "Parsing failed",
-           "test_cases": [raw_output],
-           "automation_steps": []
-       }
+      structured_output = json.loads(raw_output)
+   except Exception:
+      structured_output = {
+       "summary": "Parsing failed",
+       "test_cases": [raw_output],
+       "automation_steps": []
+   }
    return structured_output
 @app.get("/")
 def root():
