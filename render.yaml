@@ -2,8 +2,7 @@ services:
  - type: web
    name: ai-explorer-backend
    env: python
-   buildCommand: bash build.sh
-   startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+   startCommand: playwright install && uvicorn main:app --host 0.0.0.0 --port $PORT
    envVars:
      - key: OPENAI_API_KEY
        sync: false
