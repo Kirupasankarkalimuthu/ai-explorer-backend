@@ -24,20 +24,26 @@ class PageData(BaseModel):
 async def receive_page_data(data: PageData):
    prompt = f"""
 You are a senior QA automation engineer.
-Analyze the webpage DOM and generate:
-1. A short human-readable exploratory test plan (max 10 points).
+Analyze the webpage DOM carefully and generate:
+1. A short exploratory test plan.
 2. Structured automation steps in JSON format.
+STRICT RULES FOR SELECTORS:
+- Use existing id attributes ONLY if they actually exist in DOM.
+- If id not available, use input[name="..."].
+- For buttons, prefer text-based selector using visible text.
+- Do NOT invent IDs.
+- Keep selectors simple and realistic.
 Return strictly in this JSON format:
 {{
  "summary": "short title",
  "test_cases": ["point1", "point2"],
  "automation_steps": [
-   {{"action": "click", "selector": "css_selector"}},
+   {{"action": "click", "selector": "css_or_text_selector"}},
    {{"action": "type", "selector": "css_selector", "value": "text"}}
  ]
 }}
 DOM:
-{data.dom[:3000]}
+{data.dom}
 """
    response = client.chat.completions.create(
        model="gpt-4o-mini",
@@ -81,12 +87,55 @@ async def execute_steps(payload: dict):
          value = step.get("value", "")
          try:
             if action == "click":
-               await page.click(selector, timeout=3000)
+               try:
+                     await page.click(selector, timeout=3000)
+               except:
+      # Fallback 1: text-based
+                     await page.get_by_text(selector, exact=False).click(timeout=3000)
             elif action == "type":
-               await page.fill(selector, value, timeout=3000)
+               try:
+                     await page.fill(selector, value, timeout=3000)
+               except:
+      # Fallback: try name attribute
+                     await page.fill(f'[name="{selector}"]', value, timeout=3000)
+            elif action == "assert":
+               await page.locator(selector).wait_for(timeout=3000)
             execution_log.append(f"Executed: {action} on {selector}")
          except Exception as e:
-            execution_log.append(f"Failed: {action} on {selector} - {str(e)}")
+            execution_log.append(f"Initial failure: {action} on {selector}")
+         # Self-healing attempt
+            current_dom = await page.content()
+            healing_prompt = f"""
+         The following step failed during execution:
+         Action: {action}
+         Selector: {selector}
+         Error: {str(e)}
+         Here is the current DOM:
+         {current_dom[:4000]}
+         Suggest a corrected selector ONLY in JSON format:
+         {{"selector": "correct_selector"}}
+         """
+            healing_response = client.chat.completions.create(
+               model="gpt-4o-mini",
+               messages=[
+                  {"role": "system", "content": "You fix broken CSS selectors."},
+                  {"role": "user", "content": healing_prompt}
+               ],
+               temperature=0
+            )
+            try:
+               import json, re
+               raw = healing_response.choices[0].message.content
+               match = re.search(r"\{.*\}", raw, re.DOTALL)
+               corrected = json.loads(match.group(0))["selector"]
+         # Retry once
+               if action == "click":
+                  await page.click(corrected, timeout=3000)
+               elif action == "type":
+                  await page.fill(corrected, value, timeout=3000)
+               execution_log.append(f"Self-healed: used {corrected}")
+            except:
+               execution_log.append(f"Final failure: {action} on {selector}")
        await page.screenshot(path="final_state.png")
        await browser.close()
    return {
