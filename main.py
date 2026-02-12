@@ -47,18 +47,22 @@ DOM:
        temperature=0
    )
    raw_output = response.choices[0].message.content.strip()
-# Remove markdown formatting if present
-   if raw_output.startswith("```"):
-      raw_output = raw_output.split("```")[1]
    import json
+   import re
+   # Extract JSON object using regex
+   json_match = re.search(r"\{.*\}", raw_output, re.DOTALL)
+   if json_match:
+      json_string = json_match.group(0)
+   else:
+      json_string = raw_output  # fallback
    try:
-      structured_output = json.loads(raw_output)
-   except Exception:
+      structured_output = json.loads(json_string)
+   except Exception as e:
       structured_output = {
-       "summary": "Parsing failed",
-       "test_cases": [raw_output],
-       "automation_steps": []
-   }
+         "summary": "Parsing failed",
+         "test_cases": [raw_output],
+         "automation_steps": []
+      }
    return structured_output
 @app.get("/")
 def root():
