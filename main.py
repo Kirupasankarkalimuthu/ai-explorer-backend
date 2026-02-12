@@ -21,32 +21,42 @@ class PageData(BaseModel):
    networkLogs: List[Dict]
 @app.post("/explore")
 async def receive_page_data(data: PageData):
-   print("\n===== AI ANALYZING PAGE =====")
-   print("URL:", data.url)
    prompt = f"""
-You are an expert QA test automation planner.
-Given this webpage DOM (partial) and network logs,
-create a short exploration test plan.
-Return steps in numbered format.
+You are a senior QA automation engineer.
+Analyze the webpage DOM and generate:
+1. A short human-readable exploratory test plan (max 10 points).
+2. Structured automation steps in JSON format.
+Return strictly in this JSON format:
+{{
+ "summary": "short title",
+ "test_cases": ["point1", "point2"],
+ "automation_steps": [
+   {{"action": "click", "selector": "css_selector"}},
+   {{"action": "type", "selector": "css_selector", "value": "text"}}
+ ]
+}}
 DOM:
 {data.dom[:3000]}
-Network Logs:
-{data.networkLogs[-5:]}
 """
    response = client.chat.completions.create(
-       model="gpt-4.1-mini",
+       model="gpt-4o-mini",
        messages=[
-           {"role": "system", "content": "You are a senior QA automation engineer."},
+           {"role": "system", "content": "You are a strict JSON generator."},
            {"role": "user", "content": prompt}
-       ]
+       ],
+       temperature=0
    )
-   plan = response.choices[0].message.content
-   print("\n===== AI PLAN =====")
-   print(plan)
-   return {
-       "message": "AI Plan Generated",
-       "plan": plan
-   }
+   raw_output = response.choices[0].message.content
+   import json
+   try:
+       structured_output = json.loads(raw_output)
+   except Exception as e:
+       structured_output = {
+           "summary": "Parsing failed",
+           "test_cases": [raw_output],
+           "automation_steps": []
+       }
+   return structured_output
 @app.get("/")
 def root():
    return {"status": "AI Explorer Backend Running"}
