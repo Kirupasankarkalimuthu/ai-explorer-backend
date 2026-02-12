@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict
 from openai import OpenAI
+from playwright.async_api import async_playwright
 import os
 
 app = FastAPI()
@@ -64,6 +65,32 @@ DOM:
          "automation_steps": []
       }
    return structured_output
+@app.post("/execute")
+async def execute_steps(payload: dict):
+   steps = payload.get("automation_steps", [])
+   url = payload.get("url")
+   execution_log = []
+   async with async_playwright() as p:
+       browser = await p.chromium.launch(headless=True)
+       page = await browser.new_page()
+       await page.goto(url)
+       for step in steps:
+           action = step.get("action")
+           selector = step.get("selector")
+           value = step.get("value", "")
+           try:
+               if action == "click":
+                   await page.click(selector)
+               elif action == "type":
+                   await page.fill(selector, value)
+               execution_log.append(f"Executed: {action} on {selector}")
+           except Exception as e:
+               execution_log.append(f"Failed: {action} on {selector} - {str(e)}")
+       await browser.close()
+   return {
+       "status": "Execution completed",
+       "log": execution_log
+   }
 @app.get("/")
 def root():
    return {"status": "AI Explorer Backend Running"}
