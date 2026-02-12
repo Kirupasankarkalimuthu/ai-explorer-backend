@@ -1,0 +1,8 @@
+ - type: web
+   name: ai-explorer-backend
+   env: python
+   buildCommand: ""
+   startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+   envVars:
+     - key: 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
+       sync: false
