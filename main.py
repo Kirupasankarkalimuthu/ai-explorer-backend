@@ -113,6 +113,9 @@ async def execute_steps(payload: dict):
        page = await browser.new_page()
        await page.goto(url)
        await page.wait_for_load_state("networkidle")
+       print("===== PLAYWRIGHT PAGE HTML =====")
+       print(await page.content())
+       print("================================")
        for step in steps:
          if not isinstance(step, dict):
                execution_log.append("⚠ Skipping invalid step format")
