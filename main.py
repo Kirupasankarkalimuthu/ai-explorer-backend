@@ -35,41 +35,161 @@ async def run_exploration(payload: dict):
        # ✅ Single source of truth DOM
        dom = await page.content()
        prompt = f"""
+
 You are analyzing a webpage DOM for automated exploratory testing.
-You are given test_data as key-value pairs.
-INSTRUCTIONS:
+
+You are also given optional test_data as key-value pairs.
+
+==============================
+
+GENERAL BEHAVIOR RULES
+
+==============================
+
 1. If test_data is NOT empty:
-  - Match each test_data key with input field id, name, placeholder, or label text.
-  - Use matching test_data values when generating automation steps.
-  - Do NOT hallucinate fields that do not exist in DOM.
-  - If a test_data key does not match any field, ignore it.
+
+   - Match each test_data key with input field id, name, placeholder, or associated label text.
+
+   - Use matching test_data values when generating positive test scenarios.
+
+   - If a test_data key does not match any field in the DOM, ignore it.
+
+   - Do NOT hallucinate fields that do not exist.
+
 2. If test_data IS empty:
-  - Generate negative test scenarios.
-  - Generate realistic dummy data for positive scenarios.
-  - Do NOT assume login success unless a success indicator exists in DOM.
-  - If the page contains input fields and a submit button,generate at least one scenario interacting with them.
-3. Generate automation_steps using STRICT selector rules:
-   1. If id exists, use "#id".
-   2. Otherwise use input[name="..."].
-   3. Prefer selectors that uniquely identify one element.
-   4. If multiple elements match, choose the most specific selector.
-   5. Do NOT return empty automation_steps if interactive elements exist.
-   6. For every test case generated, generate corresponding automation steps.
-   7. Return flat structure only.
-   Return strictly JSON:
-   {{
-   "test_cases": [],
-   "automation_steps": []
-   }}
-   IMPORTANT:
-   - You MUST generate at least one test case.
-   - You MUST generate at least one automation step if interactive elements exist.
-   - If input fields exist in DOM, generate at least one interaction.
-   - Never return empty arrays unless DOM has zero interactive elements.
-Test Data:
+
+   - Generate realistic dummy values for positive scenarios.
+
+   - Generate negative test scenarios (invalid input, empty fields, etc.).
+
+   - Do NOT assume successful login unless DOM contains clear success indicators.
+
+3. If input fields and a submit-type button exist:
+
+   - Generate at least one interaction scenario.
+
+   - Never return empty test_cases or automation_steps if interactive elements exist.
+
+==============================
+
+STEP 1 — Identify UI Elements
+
+==============================
+
+Identify:
+
+- Input fields (id, name, placeholder, type)
+
+- Buttons (id, text, type)
+
+- Links
+
+==============================
+
+STEP 2 — Generate Test Cases
+
+==============================
+
+Generate concise exploratory test cases.
+
+Include:
+
+- Positive scenario (using test_data if provided, otherwise dummy data)
+
+- Negative scenarios (invalid input, empty fields, boundary cases)
+
+Each test case must be structured as:
+
+{
+
+  "description": "short description"
+
+}
+
+==============================
+
+STEP 3 — Generate automation_steps
+
+==============================
+
+automation_steps MUST be a flat list of structured objects.
+
+Each step MUST strictly follow this format:
+
+{
+
+  "action": "type" | "click" | "assert_url_contains" | "assert_text" | "assert_visible",
+
+  "selector": "CSS selector",
+
+  "value": "text value (only required for type or assert_text)"
+
+}
+
+STRICT RULES:
+
+- DO NOT return Playwright-style strings like "#username.type('admin')"
+
+- DO NOT return JavaScript code
+
+- DO NOT return natural language steps
+
+- DO NOT nest steps inside test cases
+
+- DO NOT return strings instead of objects
+
+- automation_steps MUST be a list of dictionaries
+
+- For every test case generated, corresponding automation_steps must exist
+
+Selector Rules:
+
+1. If id exists, ALWAYS use "#id".
+
+2. If no id, use input[name="..."].
+
+3. Prefer selectors that uniquely identify one element.
+
+4. If multiple elements match, choose the most specific selector available.
+
+5. Never hallucinate selectors not present in DOM.
+
+==============================
+
+OUTPUT FORMAT
+
+==============================
+
+Return strictly valid JSON in this exact structure:
+
+{{
+
+  "test_cases": [],
+
+  "automation_steps": []
+
+}}
+
+Never omit required fields.
+
+Never return empty arrays if interactive elements exist.
+
+==============================
+
+TEST DATA
+
+==============================
+
 {json.dumps(test_data)}
-DOM:
+
+==============================
+
+DOM
+
+==============================
+
 {dom}
+
 """
        # 🔥 Force strict JSON
        response = client.chat.completions.create(
