@@ -82,6 +82,9 @@ DOM:
            temperature=0
        )
        result = json.loads(response.choices[0].message.content) # type: ignore
+       print("========== AI RAW RESULT ==========")
+       print(result)
+       print("===================================")
        # ===============================
        # Extract test cases safely
        # ===============================
