@@ -17,6 +17,7 @@ app.add_middleware(
 
 @app.post("/run")
 async def run_exploration(payload: dict):
+   test_data = payload.get("test_data", {})
    url = payload.get("url")
    if not url:
        return {"error": "URL missing"}
@@ -35,33 +36,30 @@ async def run_exploration(payload: dict):
        dom = await page.content()
        prompt = f"""
 You are analyzing a webpage DOM for automated exploratory testing.
-STEP 1:
-Identify interactive elements:
-- input fields (id, name, placeholder)
-- buttons (id, text, type)
-- links
-STEP 2:
-Generate concise exploratory negative test cases.
-STEP 3:
-Generate automation_steps using STRICT selector rules:
-1. If id exists, ALWAYS use "#id".
-2. If no id, use input[name="..."].
-3. Selector must match exactly ONE element in DOM.
-4. Do NOT use generic selectors.
-5. Return flat structure only.
-Return strictly JSON in this format:
-
+You are given test_data as key-value pairs.
+INSTRUCTIONS:
+1. If test_data is NOT empty:
+  - Match each test_data key with input field id, name, placeholder, or label text.
+  - Use matching test_data values when generating automation steps.
+  - Do NOT hallucinate fields that do not exist in DOM.
+  - If a test_data key does not match any field, ignore it.
+2. If test_data IS empty:
+  - Generate negative test scenarios.
+  - Generate realistic dummy data for positive scenarios.
+  - Do NOT assume login success unless a success indicator exists in DOM.
+3. Generate automation_steps using STRICT selector rules:
+  - If id exists, ALWAYS use "#id".
+  - If no id, use input[name="..."].
+  - Selector must match exactly ONE element in DOM.
+  - Do NOT use generic selectors like div, button alone.
+  - Return flat structure only.
+Return strictly JSON:
 {{
  "test_cases": [],
  "automation_steps": []
 }}
-
-For every generated test case, generate corresponding automation_steps.
-
-IMPORTANT:
-- Both "test_cases" and "automation_steps" MUST be present.
-- If no automation steps can be generated, return an empty list.
-- Do NOT omit the automation_steps field.
+Test Data:
+{json.dumps(test_data)}
 DOM:
 {dom}
 """
