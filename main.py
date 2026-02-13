@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict
 from openai import OpenAI
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright # type: ignore
 import os
 
 app = FastAPI()
@@ -42,19 +42,23 @@ Rules:
 - If a button has type="submit", use selector: button[type="submit"]
 - For inputs, prefer input[name="..."] if available.
 STEP 3:
-Generate automation_steps using selectors that EXACTLY locate the element from the provided DOM.
-STRICT RULES FOR SELECTORS:
-1. The selector MUST uniquely identify exactly ONE element in the DOM.
-2. If the element has an id attribute, ALWAYS use "#id".
-3. If no id exists, use the most specific attribute combination (e.g., input[name="username"]).
-4. Avoid generic selectors like:
+Generate automation_steps using selectors that EXACTLY locate elements from the provided DOM.
+STRICT SELECTOR RULES:
+1. Each selector MUST uniquely identify exactly ONE element in the given DOM.
+2. If an element has an id attribute, ALWAYS use "#id".
+3. If no id exists, use the most specific attribute available (e.g., input[name="username"]).
+4. If selecting a button and it has visible text, you may use:
+  button:has-text("ExactText")
+  but ONLY if no id exists.
+5. Avoid generic selectors like:
   - button
   - div
   - button[type="submit"]
-  unless absolutely no better selector exists.
-5. Do NOT invent selectors that are not present in the DOM.
-6. The selector must be directly derivable from the provided DOM.
-automation_steps MUST be a simple flat list like this:
+  unless absolutely no id, name, or unique attribute exists.
+6. Do NOT invent attributes that are not present in the DOM.
+7. Before returning automation_steps, mentally verify that each selector would match exactly one element in the provided DOM.
+8. If a selector would match zero elements or multiple elements, refine it.
+automation_steps MUST be a simple flat list of objects like this:
 [
  {{"action": "type", "selector": "#username", "value": "invalid_user"}},
  {{"action": "type", "selector": "#password", "value": "wrong_pass"}},
@@ -64,7 +68,12 @@ Each step MUST contain:
 - action (string)
 - selector (string)
 - optional value (string)
-Return only flat objects. No nested structures.
+Do NOT:
+- Nest objects
+- Add step numbers
+- Add extra metadata
+- Return explanations
+Return only valid JSON.
 DOM:
 {data.dom}
 """
@@ -79,12 +88,13 @@ DOM:
    )
    # Directly parse JSON (no regex needed)
    structured_output = json.loads(
-      response.choices[0].message.content
+      response.choices[0].message.content # type: ignore
    )
    print("===== AI STRUCTURED OUTPUT =====")
    print(structured_output)
    print("================================")
    return structured_output
+
 @app.post("/execute")
 async def execute_steps(payload: dict):
    steps = payload.get("automation_steps", [])
@@ -151,7 +161,7 @@ async def execute_steps(payload: dict):
             try:
                import json, re
                raw = healing_response.choices[0].message.content
-               match = re.search(r"\{.*\}", raw, re.DOTALL)
+               match = re.search(r"\{.*\}", raw, re.DOTALL) # type: ignore
                corrected = json.loads(match.group(0))["selector"]
          # Retry once
                if action == "click":
