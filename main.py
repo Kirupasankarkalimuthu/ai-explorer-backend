@@ -23,40 +23,50 @@ class PageData(BaseModel):
 @app.post("/explore")
 async def receive_page_data(data: PageData):
    prompt = f"""
-   You are analyzing a webpage DOM.
-   STEP 1:
-   List all interactive UI elements found in the DOM including:
-   - input fields (include name, id, placeholder if available)
-   - buttons (include exact visible text or type attribute)
-   - links
-   STEP 2:
-   Based ONLY on the actual elements found above,
-   generate concise exploratory test cases.
-   Rules:
-   - Do NOT assume valid credentials.
-   - If no valid credentials are provided, test only invalid or empty scenarios.
-   - Do NOT invent button names like "Login" if not present.
-   - Use EXACT button text as shown in DOM.
-   - If button has type="submit", use selector: button[type="submit"]
-   - For inputs, prefer input[name="..."] if available.
-   STEP 3:
-   Generate automation_steps using ONLY selectors that actually exist in DOM.
-   IMPORTANT:
-   automation_steps MUST be a simple list of objects like:
-   [
-   {"action": "type", "selector": "input[name='username']", "value": "invalid_user"},
-   {"action": "type", "selector": "input[name='password']", "value": "wrong_pass"},
-   {"action": "click", "selector": "button[type='submit']"}
-   ]
-   Each step MUST contain:
-   - action (string)
-   - selector (string)
-   - optional value (string)
-   Do NOT nest objects.
-   Do NOT add extra fields.
-   DOM:
-   {data.dom}
-   """
+You are analyzing a webpage DOM for automated exploratory testing.
+STEP 1:
+Identify all interactive UI elements present in the DOM:
+- Input fields (include name, id, placeholder if available)
+- Buttons (include exact visible text OR type attribute)
+- Links
+List them clearly in "ui_elements".
+STEP 2:
+Based ONLY on actual elements found above,
+generate concise exploratory test cases.
+Rules:
+- Do NOT assume valid credentials.
+- If no valid credentials provided, test only invalid and empty scenarios.
+- Do NOT invent button names like "Login" if not present.
+- Use EXACT button text as shown in DOM.
+- If a button has type="submit", use selector: button[type="submit"]
+- For inputs, prefer input[name="..."] if available.
+STEP 3:
+Generate automation_steps using ONLY selectors that actually exist in DOM.
+IMPORTANT:
+automation_steps MUST be a simple flat list like this:
+[
+ {{"action": "type", "selector": "input[name='username']", "value": "invalid_user"}},
+ {{"action": "type", "selector": "input[name='password']", "value": "wrong_pass"}},
+ {{"action": "click", "selector": "button[type='submit']"}}
+]
+Each step MUST contain:
+- action (string)
+- selector (string)
+- optional value (string)
+Do NOT nest objects.
+Do NOT add extra fields.
+Do NOT return step numbers.
+Return only simple flat objects as shown above.
+Return strictly in this JSON format:
+{{
+ "ui_elements": [],
+ "summary": "short title",
+ "test_cases": [],
+ "automation_steps": []
+}}
+DOM:
+{data.dom}
+"""
    response = client.chat.completions.create(
        model="gpt-4o-mini",
        messages=[
