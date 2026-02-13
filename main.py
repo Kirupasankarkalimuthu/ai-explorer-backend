@@ -47,6 +47,7 @@ INSTRUCTIONS:
   - Generate negative test scenarios.
   - Generate realistic dummy data for positive scenarios.
   - Do NOT assume login success unless a success indicator exists in DOM.
+  - If the page contains input fields and a submit button,generate at least one scenario interacting with them.
 3. Generate automation_steps using STRICT selector rules:
   - If id exists, ALWAYS use "#id".
   - If no id, use input[name="..."].
@@ -58,6 +59,11 @@ Return strictly JSON:
  "test_cases": [],
  "automation_steps": []
 }}
+IMPORTANT:
+- You MUST generate at least one test case.
+- You MUST generate at least one automation step if interactive elements exist.
+- If input fields exist in DOM, generate at least one interaction.
+- Never return empty arrays unless DOM has zero interactive elements.
 Test Data:
 {json.dumps(test_data)}
 DOM:
