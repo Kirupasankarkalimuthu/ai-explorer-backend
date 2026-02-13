@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -68,30 +69,18 @@ DOM:
 {data.dom}
 """
    response = client.chat.completions.create(
-       model="gpt-4o-mini",
-       messages=[
-           {"role": "system", "content": "You are a strict JSON generator."},
-           {"role": "user", "content": prompt}
-       ],
-       temperature=0
+   model="gpt-4o-mini",
+   messages=[
+       {"role": "system", "content": "You are a strict JSON generator."},
+       {"role": "user", "content": prompt}
+   ],
+   response_format={"type": "json_object"},  # 🔥 FORCE JSON
+   temperature=0
    )
-   raw_output = response.choices[0].message.content.strip()
-   import json
-   import re
-   # Extract JSON object using regex
-   json_match = re.search(r"\{.*\}", raw_output, re.DOTALL)
-   if json_match:
-      json_string = json_match.group(0)
-   else:
-      json_string = raw_output  # fallback
-   try:
-      structured_output = json.loads(json_string)
-   except Exception as e:
-      structured_output = {
-         "summary": "Parsing failed",
-         "test_cases": [raw_output],
-         "automation_steps": []
-      }
+   # Directly parse JSON (no regex needed)
+   structured_output = json.loads(
+      response.choices[0].message.content
+   )
    print("===== AI STRUCTURED OUTPUT =====")
    print(structured_output)
    print("================================")
