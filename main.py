@@ -80,6 +80,14 @@ async def receive_page_data(data: PageData):
 @app.post("/execute")
 async def execute_steps(payload: dict):
    steps = payload.get("automation_steps", [])
+   if isinstance(steps, str):
+      try:
+         import json
+         steps = json.loads(steps)
+      except:
+         steps = []
+   if not isinstance(steps, list):
+      steps = []
    url = payload.get("url")
    execution_log = []
    async with async_playwright() as p:
@@ -88,6 +96,9 @@ async def execute_steps(payload: dict):
        await page.goto(url)
        await page.wait_for_load_state("networkidle")
        for step in steps:
+         if not isinstance(step, dict):
+               execution_log.append("⚠ Skipping invalid step format")
+               continue
          action = step.get("action")
          selector = step.get("selector")
          value = step.get("value", "")
