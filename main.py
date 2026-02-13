@@ -41,13 +41,19 @@ async def receive_page_data(data: PageData):
    - For inputs, prefer input[name="..."] if available.
    STEP 3:
    Generate automation_steps using ONLY selectors that actually exist in DOM.
-   Return strictly in this JSON format:
-   {{
-   "ui_elements": [],
-   "summary": "short title",
-   "test_cases": [],
-   "automation_steps": []
-   }}
+   IMPORTANT:
+   automation_steps MUST be a simple list of objects like:
+   [
+   {"action": "type", "selector": "input[name='username']", "value": "invalid_user"},
+   {"action": "type", "selector": "input[name='password']", "value": "wrong_pass"},
+   {"action": "click", "selector": "button[type='submit']"}
+   ]
+   Each step MUST contain:
+   - action (string)
+   - selector (string)
+   - optional value (string)
+   Do NOT nest objects.
+   Do NOT add extra fields.
    DOM:
    {data.dom}
    """
