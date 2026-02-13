@@ -23,28 +23,34 @@ class PageData(BaseModel):
 @app.post("/explore")
 async def receive_page_data(data: PageData):
    prompt = f"""
-You are a senior QA automation engineer.
-Analyze the webpage DOM carefully and generate:
-1. A short exploratory test plan.
-2. Structured automation steps in JSON format.
-STRICT RULES FOR SELECTORS:
-- Use existing id attributes ONLY if they actually exist in DOM.
-- If id not available, use input[name="..."].
-- For buttons, prefer text-based selector using visible text.
-- Do NOT invent IDs.
-- Keep selectors simple and realistic.
-Return strictly in this JSON format:
-{{
- "summary": "short title",
- "test_cases": ["point1", "point2"],
- "automation_steps": [
-   {{"action": "click", "selector": "css_or_text_selector"}},
-   {{"action": "type", "selector": "css_selector", "value": "text"}}
- ]
-}}
-DOM:
-{data.dom}
-"""
+   You are analyzing a webpage DOM.
+   STEP 1:
+   List all interactive UI elements found in the DOM including:
+   - input fields (include name, id, placeholder if available)
+   - buttons (include exact visible text or type attribute)
+   - links
+   STEP 2:
+   Based ONLY on the actual elements found above,
+   generate concise exploratory test cases.
+   Rules:
+   - Do NOT assume valid credentials.
+   - If no valid credentials are provided, test only invalid or empty scenarios.
+   - Do NOT invent button names like "Login" if not present.
+   - Use EXACT button text as shown in DOM.
+   - If button has type="submit", use selector: button[type="submit"]
+   - For inputs, prefer input[name="..."] if available.
+   STEP 3:
+   Generate automation_steps using ONLY selectors that actually exist in DOM.
+   Return strictly in this JSON format:
+   {{
+   "ui_elements": [],
+   "summary": "short title",
+   "test_cases": [],
+   "automation_steps": []
+   }}
+   DOM:
+   {data.dom}
+   """
    response = client.chat.completions.create(
        model="gpt-4o-mini",
        messages=[
