@@ -49,21 +49,23 @@ INSTRUCTIONS:
   - Do NOT assume login success unless a success indicator exists in DOM.
   - If the page contains input fields and a submit button,generate at least one scenario interacting with them.
 3. Generate automation_steps using STRICT selector rules:
-  - If id exists, ALWAYS use "#id".
-  - If no id, use input[name="..."].
-  - Selector must match exactly ONE element in DOM.
-  - Do NOT use generic selectors like div, button alone.
-  - Return flat structure only.
-Return strictly JSON:
-{{
- "test_cases": [],
- "automation_steps": []
-}}
-IMPORTANT:
-- You MUST generate at least one test case.
-- You MUST generate at least one automation step if interactive elements exist.
-- If input fields exist in DOM, generate at least one interaction.
-- Never return empty arrays unless DOM has zero interactive elements.
+   1. If id exists, use "#id".
+   2. Otherwise use input[name="..."].
+   3. Prefer selectors that uniquely identify one element.
+   4. If multiple elements match, choose the most specific selector.
+   5. Do NOT return empty automation_steps if interactive elements exist.
+   6. For every test case generated, generate corresponding automation steps.
+   7. Return flat structure only.
+   Return strictly JSON:
+   {{
+   "test_cases": [],
+   "automation_steps": []
+   }}
+   IMPORTANT:
+   - You MUST generate at least one test case.
+   - You MUST generate at least one automation step if interactive elements exist.
+   - If input fields exist in DOM, generate at least one interaction.
+   - Never return empty arrays unless DOM has zero interactive elements.
 Test Data:
 {json.dumps(test_data)}
 DOM:
