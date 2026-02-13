@@ -56,12 +56,11 @@ GENERAL BEHAVIOR RULES
 
    - Do NOT hallucinate fields that do not exist.
 
-2. If test_data IS empty:
-
-   - Generate realistic dummy values for positive scenarios.
-
+2.If test_data IS empty:
+   - DO NOT generate positive login using known real credentials.
+   - Generate only negative scenarios.
+   - Do NOT attempt successful login unless test_data explicitly provides valid credentials.
    - Generate negative test scenarios (invalid input, empty fields, etc.).
-
    - Do NOT assume successful login unless DOM contains clear success indicators.
 
 3. If input fields and a submit-type button exist:
