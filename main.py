@@ -41,29 +41,29 @@ Rules:
 - If a button has type="submit", use selector: button[type="submit"]
 - For inputs, prefer input[name="..."] if available.
 STEP 3:
-Generate automation_steps using ONLY selectors that actually exist in DOM.
-IMPORTANT:
+Generate automation_steps using selectors that EXACTLY locate the element from the provided DOM.
+STRICT RULES FOR SELECTORS:
+1. The selector MUST uniquely identify exactly ONE element in the DOM.
+2. If the element has an id attribute, ALWAYS use "#id".
+3. If no id exists, use the most specific attribute combination (e.g., input[name="username"]).
+4. Avoid generic selectors like:
+  - button
+  - div
+  - button[type="submit"]
+  unless absolutely no better selector exists.
+5. Do NOT invent selectors that are not present in the DOM.
+6. The selector must be directly derivable from the provided DOM.
 automation_steps MUST be a simple flat list like this:
 [
- {{"action": "type", "selector": "input[name='username']", "value": "invalid_user"}},
- {{"action": "type", "selector": "input[name='password']", "value": "wrong_pass"}},
- {{"action": "click", "selector": "button[type='submit']"}}
+ {{"action": "type", "selector": "#username", "value": "invalid_user"}},
+ {{"action": "type", "selector": "#password", "value": "wrong_pass"}},
+ {{"action": "click", "selector": "#submit"}}
 ]
 Each step MUST contain:
 - action (string)
 - selector (string)
 - optional value (string)
-Do NOT nest objects.
-Do NOT add extra fields.
-Do NOT return step numbers.
-Return only simple flat objects as shown above.
-Return strictly in this JSON format:
-{{
- "ui_elements": [],
- "summary": "short title",
- "test_cases": [],
- "automation_steps": []
-}}
+Return only flat objects. No nested structures.
 DOM:
 {data.dom}
 """
