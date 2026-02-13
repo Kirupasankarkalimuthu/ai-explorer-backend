@@ -76,7 +76,9 @@ async def receive_page_data(data: PageData):
          "test_cases": [raw_output],
          "automation_steps": []
       }
-      print(structured_output)
+   print("===== AI STRUCTURED OUTPUT =====")
+   print(structured_output)
+   print("================================")
    return structured_output
 @app.post("/execute")
 async def execute_steps(payload: dict):
