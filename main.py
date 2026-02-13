@@ -1,9 +1,19 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from playwright.async_api import async_playwright # type: ignore
 from openai import OpenAI
 import json
+import base64
 app = FastAPI()
 client = OpenAI()
+# Allow extension requests
+app.add_middleware(
+   CORSMiddleware,
+   allow_origins=["*"],
+   allow_credentials=True,
+   allow_methods=["*"],
+   allow_headers=["*"],
+)
 
 @app.post("/run")
 async def run_exploration(payload: dict):
@@ -11,6 +21,8 @@ async def run_exploration(payload: dict):
    if not url:
        return {"error": "URL missing"}
    execution_log = []
+   test_cases = []
+   screenshot_base64 = ""
    async with async_playwright() as p:
        browser = await p.chromium.launch(
            headless=True,
@@ -19,7 +31,7 @@ async def run_exploration(payload: dict):
        page = await browser.new_page()
        await page.goto(url)
        await page.wait_for_load_state("networkidle")
-       # 🔥 Capture DOM from SAME Playwright session
+       # ✅ Single source of truth DOM
        dom = await page.content()
        prompt = f"""
 You are analyzing a webpage DOM for automated exploratory testing.
@@ -29,7 +41,7 @@ Identify interactive elements:
 - buttons (id, text, type)
 - links
 STEP 2:
-Generate concise exploratory negative test cases only.
+Generate concise exploratory negative test cases.
 STEP 3:
 Generate automation_steps using STRICT selector rules:
 1. If id exists, ALWAYS use "#id".
@@ -37,7 +49,7 @@ Generate automation_steps using STRICT selector rules:
 3. Selector must match exactly ONE element in DOM.
 4. Do NOT use generic selectors.
 5. Return flat structure only.
-Return strictly JSON:
+Return strictly JSON in this format:
 {{
  "test_cases": [],
  "automation_steps": []
@@ -45,7 +57,7 @@ Return strictly JSON:
 DOM:
 {dom}
 """
-       # 🔥 Force strict JSON response
+       # 🔥 Force strict JSON
        response = client.chat.completions.create(
            model="gpt-4o-mini",
            messages=[
@@ -56,9 +68,19 @@ DOM:
            temperature=0
        )
        result = json.loads(response.choices[0].message.content) # type: ignore
-       test_cases = result.get("test_cases", [])
+       # ===============================
+       # Extract test cases safely
+       # ===============================
+       raw_test_cases = result.get("test_cases", [])
+       if isinstance(raw_test_cases, list):
+           test_cases = raw_test_cases
+       else:
+           test_cases = []
+       # ===============================
+       # Extract & normalize steps safely
+       # ===============================
        steps = result.get("automation_steps", [])
-       # 🔥 Defensive parsing in case model returns stringified JSON
+       # If steps returned as string, try parsing
        if isinstance(steps, str):
            try:
                steps = json.loads(steps)
@@ -66,13 +88,21 @@ DOM:
                steps = []
        if not isinstance(steps, list):
            steps = []
+       # Flatten nested structures if model nested steps
+       flattened_steps = []
+       for item in steps:
+           # Case 1: Proper flat step
+           if isinstance(item, dict) and "action" in item:
+               flattened_steps.append(item)
+           # Case 2: Nested inside "steps"
+           elif isinstance(item, dict) and "steps" in item:
+               for nested in item["steps"]:
+                   if isinstance(nested, dict):
+                       flattened_steps.append(nested)
        # ===============================
        # Execute Steps
        # ===============================
-       for step in steps:
-           if not isinstance(step, dict):
-               execution_log.append("⚠ Skipping invalid step format")
-               continue
+       for step in flattened_steps:
            action = step.get("action")
            selector = step.get("selector")
            value = step.get("value", "")
@@ -86,8 +116,16 @@ DOM:
                execution_log.append(
                    f"Failed: {action} on {selector} - {str(e)}"
                )
+       # ===============================
+       # Capture Screenshot
+       # ===============================
+       screenshot_bytes = await page.screenshot(full_page=True)
+       screenshot_base64 = base64.b64encode(
+           screenshot_bytes
+       ).decode("utf-8")
        await browser.close()
    return {
-       "test_cases": test_cases if isinstance(test_cases, list) else [],
-       "execution_log": execution_log
+       "test_cases": test_cases,
+       "execution_log": execution_log,
+       "screenshot": screenshot_base64
    }
