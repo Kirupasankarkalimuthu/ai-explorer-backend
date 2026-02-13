@@ -100,11 +100,11 @@ Include:
 
 Each test case must be structured as:
 
-{
+{{
 
   "description": "short description"
 
-}
+}}
 
 ==============================
 
@@ -116,7 +116,7 @@ automation_steps MUST be a flat list of structured objects.
 
 Each step MUST strictly follow this format:
 
-{
+{{
 
   "action": "type" | "click" | "assert_url_contains" | "assert_text" | "assert_visible",
 
@@ -124,7 +124,7 @@ Each step MUST strictly follow this format:
 
   "value": "text value (only required for type or assert_text)"
 
-}
+}}
 
 STRICT RULES:
 
