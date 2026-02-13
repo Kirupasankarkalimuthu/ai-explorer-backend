@@ -50,11 +50,14 @@ Generate automation_steps using STRICT selector rules:
 4. Do NOT use generic selectors.
 5. Return flat structure only.
 Return strictly JSON in this format:
-{
+
+{{
  "test_cases": [],
  "automation_steps": []
-}
+}}
+
 For every generated test case, generate corresponding automation_steps.
+
 IMPORTANT:
 - Both "test_cases" and "automation_steps" MUST be present.
 - If no automation steps can be generated, return an empty list.
