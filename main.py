@@ -143,20 +143,31 @@ async def run_exploration(request: Request):
            else:
                execution_log.append("⚠ URL did not change after action")
            # Diff-Based Validation Detection
-           after_text = await page.evaluate("() => document.body.innerText")
-           new_content = ""
-           if after_text != baseline_text:
-               new_content = after_text.replace(baseline_text, "")
-           keywords = ["invalid", "error", "required", "incorrect", "failed"]
-           detected_messages = [
-               line.strip()
-               for line in new_content.split("\n")
-               if any(k in line.lower() for k in keywords)
-               and len(line.strip()) < 200
-               and len(line.strip()) > 3
-           ]
-           if detected_messages:
-               execution_log.append(f"⚠ New Validation Detected: {detected_messages}")
+           # Detect visible validation elements only
+           validation_elements = await page.evaluate("""
+            () => {
+            const keywords = ["invalid", "error", "required", "incorrect", "failed"];
+            const elements = Array.from(document.querySelectorAll("body *"));
+            return elements
+                .filter(el => {
+                    const style = window.getComputedStyle(el);
+                    const visible = style.display !== "none" &&
+                                    style.visibility !== "hidden" &&
+                                    el.offsetHeight > 0 &&
+                                    el.offsetWidth > 0;
+                    const text = el.innerText ? el.innerText.trim() : "";
+                    const shortText = text.length > 0 && text.length < 120;
+                    const containsKeyword = keywords.some(k =>
+                        text.toLowerCase().includes(k)
+                    );
+                    return visible && shortText && containsKeyword;
+                })
+                .map(el => el.innerText.trim())
+                .slice(0, 3);
+            }
+            """)
+           if validation_elements:
+            execution_log.append(f"⚠ Validation Messages Detected: {validation_elements}")
        if console_errors:
            execution_log.append(f"⚠ Console Errors: {console_errors}")
        if network_errors:
