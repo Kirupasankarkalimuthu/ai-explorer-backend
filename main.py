@@ -34,6 +34,13 @@ If test_data IS empty:
 - Do NOT attempt successful login.
 - Do NOT use known credentials.
 - Do NOT assume valid authentication.
+Before generating automation_steps:
+- Inspect the DOM and list actual button elements.
+- Inspect the DOM and list actual elements that display validation or error messages.
+- Use ONLY selectors that exist in the DOM.
+- Do NOT assume common class names like .error-message.
+- Do NOT assume button[type="submit"] unless it exists exactly in DOM.
+- If a selector does not appear exactly in the DOM text,do NOT use it.
 AUTOMATION RULES:
 Return structured automation_steps as flat JSON objects.
 DO NOT return Playwright code strings.
