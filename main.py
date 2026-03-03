@@ -125,9 +125,11 @@ async def run_exploration(request: Request):
                try:
                    if action == "type":
                        await page.fill(selector, value)
+                       execution_log.append(f"DEBUG: Typing '{value}' into {selector}")
                        execution_log.append(f"Executed: type on {selector}")
                    elif action == "click":
                        await page.click(selector)
+                       execution_log.append(f"DEBUG: Clicking on {selector}")
                        execution_log.append(f"Executed: click on {selector}")
                        await page.wait_for_timeout(800)
                except Exception as e:
