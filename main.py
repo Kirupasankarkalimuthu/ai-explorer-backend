@@ -3,7 +3,7 @@ import base64
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright # type: ignore
 app = FastAPI()
 client = OpenAI()
 app.add_middleware(
@@ -95,14 +95,23 @@ Test Data:
    # STEP 3 — CALL OPENAI
    # =============================
    response = client.chat.completions.create(
-       model="gpt-4.1-mini",
-       messages=[{"role": "user", "content": prompt}],
-       temperature=0.2,
-   )
+   model="gpt-4.1-mini",
+   messages=[{"role": "user", "content": prompt}],
+   temperature=0.2,
+   response_format={"type": "json_object"},
+)
    try:
-       result = json.loads(response.choices[0].message.content)
+    result = json.loads(response.choices[0].message.content) # type: ignore
    except Exception:
-       return {"error": "Failed to parse AI response"}
+    return {
+       "error": "LLM returned invalid JSON",
+       "raw_response": response.choices[0].message.content
+   }
+   if not result.get("test_cases"):
+    return {
+       "error": "LLM returned empty test_cases",
+       "raw_response": result
+   }
    test_cases = result.get("test_cases", [])
    execution_log = []
    # =============================
