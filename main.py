@@ -3,7 +3,7 @@ import base64
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-from playwright.async_api import async_playwright # type: ignore
+from playwright.async_api import async_playwright
 app = FastAPI()
 client = OpenAI()
 app.add_middleware(
@@ -58,29 +58,33 @@ async def run_exploration(request: Request):
        "buttons": buttons
    }
    # =============================
-   # STEP 2 — BUILD CLEAN PROMPT
+   # STEP 2 — BUILD PROMPT
    # =============================
    prompt = f"""
 You are generating automated exploratory test cases.
 DETERMINISTIC POLICY:
 If test_data is NOT empty:
-- Generate one positive scenario using ONLY provided values.
+- Generate exactly one positive scenario using ONLY provided values.
 - Also generate negative scenarios.
 If test_data IS empty:
 - Generate ONLY negative scenarios.
 - Do NOT assume valid credentials.
-Use ONLY the UI snapshot below to create selectors.
+Use ONLY the UI snapshot below.
 Do NOT hallucinate selectors.
-Each automation step MUST follow:
+Each test case MUST follow this structure:
 {{
- "action": "type" | "click" | "assert_visible",
- "selector": "CSS selector",
- "value": "text (only for type)"
+ "description": "short description",
+ "steps": [
+   {{
+     "action": "type" | "click" | "assert_visible",
+     "selector": "CSS selector",
+     "value": "text (only for type)"
+   }}
+ ]
 }}
 Return strictly valid JSON:
 {{
- "test_cases": [],
- "automation_steps": []
+ "test_cases": []
 }}
 UI Snapshot:
 {json.dumps(ui_snapshot)}
@@ -96,14 +100,13 @@ Test Data:
        temperature=0.2,
    )
    try:
-       result = json.loads(response.choices[0].message.content) # type: ignore
+       result = json.loads(response.choices[0].message.content)
    except Exception:
        return {"error": "Failed to parse AI response"}
    test_cases = result.get("test_cases", [])
-   automation_steps = result.get("automation_steps", [])
    execution_log = []
    # =============================
-   # STEP 4 — EXECUTION
+   # STEP 4 — EXECUTION ENGINE
    # =============================
    async with async_playwright() as p:
        browser = await p.chromium.launch(
@@ -113,18 +116,22 @@ Test Data:
        context = await browser.new_context()
        page = await context.new_page()
        for test_case in test_cases:
-           execution_log.append(
-               f"▶ Running: {test_case.get('description', 'Unnamed Test')}"
-           )
+           description = test_case.get("description", "Unnamed Test")
+           steps = test_case.get("steps", [])
+           execution_log.append(f"▶ Running: {description}")
+           # Reset page per test case
            await page.goto(url)
            await page.wait_for_load_state("networkidle")
-           for step in automation_steps:
+           for step in steps:
                if not isinstance(step, dict):
-                   execution_log.append("⚠ Invalid step skipped")
+                   execution_log.append("⚠ Invalid step format skipped")
                    continue
                action = step.get("action")
                selector = step.get("selector")
                value = step.get("value", "")
+               if not action or not selector:
+                   execution_log.append("⚠ Missing action/selector")
+                   continue
                try:
                    locator = page.locator(selector)
                    if await locator.count() == 0:
@@ -139,6 +146,8 @@ Test Data:
                    elif action == "assert_visible":
                        await page.wait_for_selector(selector, timeout=3000)
                        execution_log.append(f"Executed: assert_visible on {selector}")
+                   else:
+                       execution_log.append(f"⚠ Unknown action: {action}")
                except Exception as e:
                    execution_log.append(
                        f"❌ Failed: {action} on {selector} - {str(e)}"
