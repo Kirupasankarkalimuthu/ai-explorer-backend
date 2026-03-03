@@ -15,16 +15,13 @@ app.add_middleware(
 )
 HEADLESS = True
 
-@app.post("/run")
-async def run_exploration(request: Request):
+@app.post("/explore")
+async def explore(request: Request):
    payload = await request.json()
    url = payload.get("url")
-   test_data = payload.get("test_data", {})
    if not url:
        return {"error": "URL is required"}
-   # =============================
-   # UI SNAPSHOT
-   # =============================
+   findings = []
    async with async_playwright() as p:
        browser = await p.chromium.launch(
            headless=HEADLESS,
@@ -32,152 +29,98 @@ async def run_exploration(request: Request):
        )
        context = await browser.new_context()
        page = await context.new_page()
+       # --------------------------
+       # STEP 1: Capture interactive elements
+       # --------------------------
        await page.goto(url)
        await page.wait_for_load_state("networkidle")
-       inputs = await page.evaluate("""
-           () => Array.from(document.querySelectorAll("input"))
-               .filter(i => i.type !== "hidden")
-               .map(i => ({
-                   id: i.id || null,
-                   name: i.name || null,
-                   type: i.type
+       interactive_elements = await page.evaluate("""
+       () => {
+           const elements = Array.from(document.querySelectorAll(
+               "button, a, [role='button'], input[type='button'], input[type='submit']"
+           ));
+           return elements
+               .filter(el => el.offsetHeight > 0 && el.offsetWidth > 0)
+               .map(el => ({
+                   tag: el.tagName,
+                   id: el.id || null,
+                   text: el.innerText ? el.innerText.trim() : null
                }))
+               .slice(0, 10);
+       }
        """)
-       buttons = await page.evaluate("""
-           () => Array.from(document.querySelectorAll("button"))
-               .map(b => ({
-                   id: b.id || null,
-                   text: b.innerText.trim()
-               }))
-       """)
-       await browser.close()
-   ui_snapshot = {
-       "inputs": inputs,
-       "buttons": buttons
-   }
-   # =============================
-   # AI TEST GENERATION
-   # =============================
-   prompt = f"""
-Generate login exploratory test cases.
-Return JSON only.
-Structure:
+       # --------------------------
+       # STEP 2: AI decides safe clicks
+       # --------------------------
+       prompt = f"""
+You are an AI exploratory UI tester.
+From the interactive elements below, choose up to 5 safe elements to click.
+Rules:
+- Avoid logout links.
+- Avoid external links.
+- Avoid destructive actions.
+- Only choose elements with visible text or ID.
+Return JSON:
 {{
- "test_cases": [
-   {{
-     "description": "...",
-     "steps": [
-       {{"action": "type", "selector": "...", "value": "..."}},
-       {{"action": "click", "selector": "..."}}
-     ]
-   }}
+ "steps": [
+   {{"selector": "...", "description": "..."}}
  ]
 }}
-Use ONLY selectors from this UI snapshot.
-UI Snapshot:
-{json.dumps(ui_snapshot)}
-Test Data:
-{json.dumps(test_data)}
+Interactive Elements:
+{json.dumps(interactive_elements)}
 """
-   response = client.chat.completions.create(
-       model="gpt-4.1-mini",
-       messages=[{"role": "user", "content": prompt}],
-       temperature=0.2,
-       response_format={"type": "json_object"},
-   )
-   result = json.loads(response.choices[0].message.content)
-   test_cases = result.get("test_cases", [])
-   execution_log = []
-   structured_results = []
-   # =============================
-   # EXECUTION ENGINE
-   # =============================
-   async with async_playwright() as p:
-       browser = await p.chromium.launch(
-           headless=HEADLESS,
-           args=["--no-sandbox", "--disable-dev-shm-usage"],
+       response = client.chat.completions.create(
+           model="gpt-4.1-mini",
+           messages=[{"role": "user", "content": prompt}],
+           temperature=0.3,
+           response_format={"type": "json_object"},
        )
-       context = await browser.new_context()
-       page = await context.new_page()
-       for test_case in test_cases:
-           description = test_case.get("description", "Unnamed Test")
-           steps = test_case.get("steps", [])
-           execution_log.append(f"▶ Running: {description}")
+       ai_result = json.loads(response.choices[0].message.content)
+       steps = ai_result.get("steps", [])
+       # --------------------------
+       # STEP 3: Execute Each Action (Option B Mode)
+       # --------------------------
+       for step in steps:
+           selector = step.get("selector")
+           description = step.get("description", selector)
            await page.goto(url)
            await page.wait_for_load_state("networkidle")
            initial_url = page.url
-           validation_detected = False
-           for step in steps:
-               action = step.get("action")
-               selector = step.get("selector")
-               value = step.get("value", "")
-               try:
-                   if action == "type":
-                       await page.fill(selector, "")
-                       await page.fill(selector, value)
-                       execution_log.append(f"Executed: type '{value}' on {selector}")
-                   elif action == "click":
-                       await page.click(selector)
-                       execution_log.append(f"Executed: click on {selector}")
-                       await page.wait_for_timeout(1000)
-               except Exception as e:
-                   execution_log.append(f"❌ Failed: {action} on {selector} - {str(e)}")
-           # URL detection
-           url_changed = page.url != initial_url
-           if url_changed:
-               execution_log.append("✔ URL changed after action")
-           else:
-               execution_log.append("⚠ URL did not change after action")
-           # Validation detection
-           error_messages = []
-           selectors_to_check = [
-               "#error",
-               ".error",
-               ".error-message",
-               ".validation-message",
-               "[class*='error']",
-           ]
-           for sel in selectors_to_check:
-               try:
-                   locator = page.locator(sel)
-                   if await locator.count() > 0:
-                       text = await locator.first.inner_text()
-                       if text and len(text.strip()) > 0:
-                           error_messages.append(text.strip())
-                           validation_detected = True
-               except:
-                   pass
-           if error_messages:
-               execution_log.append(f"⚠ Validation Messages Detected: {error_messages}")
-           # =============================
-           # PASS / FAIL CLASSIFICATION
-           # =============================
-           is_positive = "positive" in description.lower()
-           if is_positive:
-               if url_changed:
-                   status = "PASS"
-                   reason = "Login successful and URL changed."
+           console_errors = []
+           network_errors = []
+           page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+           page.on("response", lambda response: network_errors.append(
+               f"{response.status} - {response.url}"
+           ) if response.status >= 400 else None)
+           result = "Unknown"
+           severity = "Minor"
+           try:
+               await page.click(selector, timeout=5000)
+               await page.wait_for_timeout(1000)
+               if page.url != initial_url:
+                   result = "Navigation occurred"
+                   severity = "Info"
                else:
-                   status = "FAIL"
-                   reason = "Expected successful login but URL did not change."
-           else:
-               if validation_detected:
-                   status = "PASS"
-                   reason = "Validation message detected as expected."
-               else:
-                   status = "FAIL"
-                   reason = "Expected validation message but none detected."
-           structured_results.append({
-               "test_case": description,
-               "status": status,
-               "reason": reason
+                   result = "No navigation occurred"
+           except Exception as e:
+               result = f"Click failed: {str(e)}"
+               severity = "Major"
+           if console_errors:
+               result = f"Console errors detected: {console_errors}"
+               severity = "Major"
+           if network_errors:
+               result = f"Network errors detected: {network_errors}"
+               severity = "Critical"
+           findings.append({
+               "action": description,
+               "selector": selector,
+               "result": result,
+               "severity": severity
            })
        screenshot_bytes = await page.screenshot(full_page=True)
        screenshot_base64 = base64.b64encode(screenshot_bytes).decode("utf-8")
        await browser.close()
    return {
-       "test_cases": test_cases,
-       "execution_log": execution_log,
-       "results": structured_results,
-       "screenshot": screenshot_base64,
+       "findings": findings,
+       "screenshot": screenshot_base64
    }
