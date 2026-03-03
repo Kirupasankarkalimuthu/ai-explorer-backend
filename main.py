@@ -145,8 +145,9 @@ async def run_exploration(request: Request):
            # Diff-Based Validation Detection
            # Detect visible validation elements only
            validation_elements = await page.evaluate("""
-            () => {
+           () => {
             const keywords = ["invalid", "error", "required", "incorrect", "failed"];
+            const ignorePatterns = ["type ", "verify ", "test case", "open page"];
             const elements = Array.from(document.querySelectorAll("body *"));
             return elements
                 .filter(el => {
@@ -156,16 +157,18 @@ async def run_exploration(request: Request):
                                     el.offsetHeight > 0 &&
                                     el.offsetWidth > 0;
                     const text = el.innerText ? el.innerText.trim() : "";
-                    const shortText = text.length > 0 && text.length < 120;
-                    const containsKeyword = keywords.some(k =>
-                        text.toLowerCase().includes(k)
-                    );
-                    return visible && shortText && containsKeyword;
+                    if (!text) return false;
+                    const lowerText = text.toLowerCase();
+                    const shortText = text.length > 0 && text.length < 100;
+                    const containsKeyword = keywords.some(k => lowerText.includes(k));
+                    const isInstructional = ignorePatterns.some(p => lowerText.includes(p));
+                    return visible && shortText && containsKeyword && !isInstructional;
                 })
                 .map(el => el.innerText.trim())
+                .filter((value, index, self) => self.indexOf(value) === index)
                 .slice(0, 3);
-            }
-            """)
+         }
+         """)
            if validation_elements:
             execution_log.append(f"⚠ Validation Messages Detected: {validation_elements}")
        if console_errors:
