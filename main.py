@@ -13,39 +13,59 @@ app.add_middleware(
    allow_methods=["*"],
    allow_headers=["*"],
 )
-HEADLESS = True  # Change to False for local debugging
+HEADLESS = True  # Set False for local debugging
 
 @app.post("/run")
 async def run_exploration(request: Request):
    payload = await request.json()
    url = payload.get("url")
    test_data = payload.get("test_data", {})
-# =============================
-# PROMPT (STABILIZED)
-# =============================
+   if not url:
+       return {"error": "URL is required"}
+   # =============================
+   # STEP 1 — CAPTURE DOM
+   # =============================
+   async with async_playwright() as p:
+       browser = await p.chromium.launch(
+           headless=HEADLESS,
+           args=["--no-sandbox", "--disable-dev-shm-usage"],
+       )
+       context = await browser.new_context()
+       page = await context.new_page()
+       await page.goto(url)
+       await page.wait_for_load_state("networkidle")
+       dom = await page.content()
+       await browser.close()
+   # Limit DOM size to avoid token overflow
+   dom = dom[:15000]
+   # =============================
+   # STEP 2 — BUILD PROMPT
+   # =============================
    prompt = f"""
 You are analyzing a webpage DOM for automated exploratory testing.
 DETERMINISTIC POLICY:
 If test_data is NOT empty:
-- Generate exactly one positive scenario using ONLY the provided values.
+- Generate exactly one positive scenario using ONLY provided values.
 - Also generate negative scenarios.
 If test_data IS empty:
 - Generate ONLY negative scenarios.
 - Do NOT attempt successful login.
 - Do NOT use known credentials.
 - Do NOT assume valid authentication.
+DOM GROUNDING RULES:
 Before generating automation_steps:
-- Inspect the DOM and list actual button elements.
-- Inspect the DOM and list actual elements that display validation or error messages.
-- Use ONLY selectors that exist in the DOM.
-- Do NOT assume common class names like .error-message.
-- Do NOT assume button[type="submit"] unless it exists exactly in DOM.
-- If a selector does not appear exactly in the DOM text,do NOT use it.
+- Inspect the DOM carefully.
+- Identify actual input fields.
+- Identify actual button elements.
+- Identify actual error/validation elements.
+- Use ONLY selectors that appear in the DOM.
+- Do NOT assume generic classes like .error-message.
+- Do NOT assume button.login-button unless it exists in DOM.
 AUTOMATION RULES:
-Return structured automation_steps as flat JSON objects.
+Return automation_steps as a flat list of structured objects.
 DO NOT return Playwright code strings.
 DO NOT nest steps.
-Each automation step MUST follow this structure:
+Each step MUST follow:
 {{
  "action": "type" | "click" | "assert_url_contains" | "assert_text" | "assert_visible",
  "selector": "CSS selector",
@@ -55,7 +75,7 @@ Selector Rules:
 1. If id exists, use "#id".
 2. Otherwise use input[name="..."].
 3. Prefer specific selectors.
-4. Never hallucinate selectors.
+4. Never hallucinate selectors not present in DOM.
 Return strictly valid JSON:
 {{
  "test_cases": [],
@@ -63,22 +83,27 @@ Return strictly valid JSON:
 }}
 Test Data:
 {json.dumps(test_data)}
+DOM:
+{dom}
 """
-# =============================
-# CALL OPENAI
-# =============================
+   # =============================
+   # STEP 3 — CALL OPENAI
+   # =============================
    response = client.chat.completions.create(
        model="gpt-4.1-mini",
        messages=[{"role": "user", "content": prompt}],
        temperature=0.2,
    )
-   result = json.loads(response.choices[0].message.content)
+   try:
+       result = json.loads(response.choices[0].message.content)
+   except Exception:
+       return {"error": "Failed to parse AI response"}
    test_cases = result.get("test_cases", [])
    automation_steps = result.get("automation_steps", [])
    execution_log = []
-# =============================
-# PLAYWRIGHT EXECUTION
-# =============================
+   # =============================
+   # STEP 4 — EXECUTION ENGINE
+   # =============================
    async with async_playwright() as p:
        browser = await p.chromium.launch(
            headless=HEADLESS,
@@ -90,7 +115,7 @@ Test Data:
            execution_log.append(
                f"▶ Running: {test_case.get('description', 'Unnamed Test')}"
            )
-# Reset page before each test
+           # Reset page before each test case
            await page.goto(url)
            await page.wait_for_load_state("networkidle")
            for step in automation_steps:
@@ -144,7 +169,7 @@ Test Data:
                    execution_log.append(
                        f"❌ Failed: {action} on {selector} - {str(e)}"
                    )
-# Take screenshot after last test
+       # Screenshot after last test
        screenshot_bytes = await page.screenshot(full_page=True)
        screenshot_base64 = base64.b64encode(screenshot_bytes).decode("utf-8")
        await browser.close()
