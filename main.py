@@ -61,30 +61,30 @@ async def run_exploration(request: Request):
    # STEP 2 — AI PROMPT
    # =============================
    prompt = f"""
-    Generate exploratory test cases.
-    If test_data exists:
-    - Include one positive scenario using provided values.
-    - Include negative scenarios.
-    If test_data empty:
-    - Generate only negative scenarios.
-    Return JSON only.
-    Structure:
-    {{
-    "test_cases": [
-    {{
-        "description": "...",
-        "steps": [
-        {{"action": "type", "selector": "...", "value": "..."}},
-        {{"action": "click", "selector": "..."}}
-        ]
-    }}
-    ]
-    }}
-    Use ONLY selectors from UI snapshot.
-    UI Snapshot:
-    {json.dumps(ui_snapshot)}
-    Test Data:
-    {json.dumps(test_data)}
+Generate exploratory login test cases.
+If test_data exists:
+- Include one positive scenario using provided values.
+- Include negative scenarios.
+If test_data empty:
+- Generate only negative scenarios.
+Return JSON only.
+Structure:
+{{
+ "test_cases": [
+   {{
+     "description": "...",
+     "steps": [
+       {{"action": "type", "selector": "...", "value": "..."}},
+       {{"action": "click", "selector": "..."}}
+     ]
+   }}
+ ]
+}}
+Use ONLY selectors from UI snapshot.
+UI Snapshot:
+{json.dumps(ui_snapshot)}
+Test Data:
+{json.dumps(test_data)}
 """
    response = client.chat.completions.create(
        model="gpt-4.1-mini",
@@ -117,8 +117,6 @@ async def run_exploration(request: Request):
            execution_log.append(f"▶ Running: {description}")
            await page.goto(url)
            await page.wait_for_load_state("networkidle")
-           # Capture baseline before execution
-           baseline_text = await page.evaluate("() => document.body.innerText")
            initial_url = page.url
            for step in steps:
                action = step.get("action")
@@ -142,35 +140,36 @@ async def run_exploration(request: Request):
                execution_log.append("✔ URL changed after action")
            else:
                execution_log.append("⚠ URL did not change after action")
-           # Diff-Based Validation Detection
-           # Detect visible validation elements only
+           # Precision Validation Detection
            validation_elements = await page.evaluate("""
-           () => {
-            const keywords = ["invalid", "error", "required", "incorrect", "failed"];
-            const ignorePatterns = ["type ", "verify ", "test case", "open page"];
-            const elements = Array.from(document.querySelectorAll("body *"));
-            return elements
-                .filter(el => {
-                    const style = window.getComputedStyle(el);
-                    const visible = style.display !== "none" &&
-                                    style.visibility !== "hidden" &&
-                                    el.offsetHeight > 0 &&
-                                    el.offsetWidth > 0;
-                    const text = el.innerText ? el.innerText.trim() : "";
-                    if (!text) return false;
-                    const lowerText = text.toLowerCase();
-                    const shortText = text.length > 0 && text.length < 100;
-                    const containsKeyword = keywords.some(k => lowerText.includes(k));
-                    const isInstructional = ignorePatterns.some(p => lowerText.includes(p));
-                    return visible && shortText && containsKeyword && !isInstructional;
-                })
-                .map(el => el.innerText.trim())
-                .filter((value, index, self) => self.indexOf(value) === index)
-                .slice(0, 3);
-         }
-         """)
+               () => {
+                   const elements = Array.from(document.querySelectorAll("body *"));
+                   return elements
+                       .filter(el => {
+                           const style = window.getComputedStyle(el);
+                           const visible = style.display !== "none" &&
+                                           style.visibility !== "hidden" &&
+                                           el.offsetHeight > 0 &&
+                                           el.offsetWidth > 0;
+                           const text = el.innerText ? el.innerText.trim() : "";
+                           if (!text) return false;
+                           const lower = text.toLowerCase();
+                           const looksLikeValidation =
+                               lower.includes("your ") &&
+                               (lower.includes("invalid") ||
+                                lower.includes("required") ||
+                                lower.includes("error")) &&
+                               text.length < 120;
+                           const endsWithExclamation = text.endsWith("!");
+                           return visible && looksLikeValidation && endsWithExclamation;
+                       })
+                       .map(el => el.innerText.trim())
+                       .filter((value, index, self) => self.indexOf(value) === index)
+                       .slice(0, 2);
+               }
+           """)
            if validation_elements:
-            execution_log.append(f"⚠ Validation Messages Detected: {validation_elements}")
+               execution_log.append(f"⚠ Validation Messages Detected: {validation_elements}")
        if console_errors:
            execution_log.append(f"⚠ Console Errors: {console_errors}")
        if network_errors:
